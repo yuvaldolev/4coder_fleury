@@ -195,7 +195,7 @@ F4_RenderBuffer(Application_Links *app, View_ID view_id, Face_ID face_id,
     }
     
     // NOTE(rjf): Cursor Mark Range
-    if(is_active_view && fcoder_mode == FCoderMode_Original)
+    if(is_active_view && (VimMode_Normal != vim_state.mode) && (VimMode_Insert != vim_state.mode) && (fcoder_mode == FCoderMode_Original))
     {
         F4_HighlightCursorMarkRange(app, view_id);
     }
@@ -203,6 +203,10 @@ F4_RenderBuffer(Application_Links *app, View_ID view_id, Face_ID face_id,
     // NOTE(allen): Cursor shape
     Face_Metrics metrics = get_face_metrics(app, face_id);
     u64 cursor_roundness_100 = def_get_config_u64(app, vars_save_string_lit("cursor_roundness"));
+    // TODO: Make this part of the config file.
+    if (VimMode_Normal != vim_state.mode) {
+        cursor_roundness_100 = 10;
+    }
     f32 cursor_roundness = metrics.normal_advance*cursor_roundness_100*0.01f;
     f32 mark_thickness = (f32)def_get_config_u64(app, vars_save_string_lit("mark_thickness"));
     
@@ -691,6 +695,11 @@ function BUFFER_HOOK_SIG(F4_BeginBuffer)
     Managed_Scope scope = buffer_get_managed_scope(app, buffer_id);
     Command_Map_ID *map_id_ptr = scope_attachment(app, scope, buffer_map_id, Command_Map_ID);
     *map_id_ptr = map_id;
+    
+    // NOTE: 4coder_vimmish maps.
+    Command_Map_ID* insert_map_id_ptr = scope_attachment(app, scope, vim_buffer_insert_map_id, Command_Map_ID);
+    *insert_map_id_ptr = *map_id_ptr;
+    *map_id_ptr = vim_mapid_normal;
     
     Line_Ending_Kind setting = guess_line_ending_kind_from_buffer(app, buffer_id);
     Line_Ending_Kind *eol_setting = scope_attachment(app, scope, buffer_eol_setting, Line_Ending_Kind);

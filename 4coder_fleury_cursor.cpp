@@ -8,6 +8,7 @@ global int global_hide_region_boundary = 0;
 enum Cursor_Type
 {
 	cursor_none,
+    cursor_normal,
 	cursor_insert,
 	cursor_open_range,
 	cursor_close_range,
@@ -51,7 +52,7 @@ C4_RenderCursorSymbolThingy(Application_Links *app, Rect_f32 rect,
 	{
 		Rect_f32 end_top, end_side, end_bottom;
         
-		Vec2_f32 end_p = {rect.x0, rect.y0};
+		Vec2_f32 end_p = {rect.x1, rect.y0};
         
 		end_top.x0 = end_p.x;
 		end_top.x1 = end_p.x - bracket_width;
@@ -71,6 +72,9 @@ C4_RenderCursorSymbolThingy(Application_Links *app, Rect_f32 rect,
 		draw_rectangle(app, end_bottom, roundness, color);
 		draw_rectangle(app, end_side, roundness, color);
 	}
+    else if (cursor_normal == type) {
+		draw_rectangle(app, rect, roundness, color);
+    }
 	else if(type == cursor_insert)
 	{
 		Rect_f32 side;
@@ -145,24 +149,11 @@ F4_Cursor_RenderEmacsStyle(Application_Links *app, View_ID view_id, b32 is_activ
     
     b32 has_highlight_range = draw_highlight_range(app, view_id, buffer, text_layout_id, roundness);
     
-    ColorFlags flags = 0;
-    flags |= !!global_keyboard_macro_is_recording * ColorFlag_Macro;
-    flags |= !!power_mode.enabled * ColorFlag_PowerMode;
-    ARGB_Color cursor_color = F4_GetColor(app, ColorCtx_Cursor(flags, GlobalKeybindingMode));
-    ARGB_Color mark_color = cursor_color;
-    ARGB_Color inactive_cursor_color = F4_ARGBFromID(active_color_table, fleury_color_cursor_inactive, 0);
+    /* ColorFlags flags = 0; */
+    /* flags |= !!global_keyboard_macro_is_recording * ColorFlag_Macro; */
+    /* flags |= !!power_mode.enabled * ColorFlag_PowerMode; */
+    /* ARGB_Color cursor_color = F4_GetColor(app, ColorCtx_Cursor(flags, GlobalKeybindingMode)); */
     
-    if(!F4_ARGBIsValid(inactive_cursor_color))
-    {
-        inactive_cursor_color = cursor_color;
-    }
-    
-    if(is_active_view == 0)
-    {
-        cursor_color = inactive_cursor_color;
-        mark_color = inactive_cursor_color;
-    }
-	
     // TODO(rjf): REMOVE THIS
     {
         i64 cursor_pos = view_get_cursor_pos(app, view_id);
@@ -179,24 +170,62 @@ F4_Cursor_RenderEmacsStyle(Application_Links *app, View_ID view_id, b32 is_activ
             i64 cursor_pos = global_cursor_positions[0];
             i64 mark_pos = global_mark_positions[0];
             
+            Managed_ID cursor_color_id = defcolor_cursor;
+            
 			Cursor_Type cursor_type = cursor_none;
 			Cursor_Type mark_type = cursor_none;
-			if(cursor_pos <= mark_pos)
-			{
-				cursor_type = cursor_open_range;
-				mark_type = cursor_close_range;
-			}
-			else
-			{
-				cursor_type = cursor_close_range;
-				mark_type = cursor_open_range;
-			}
-			
-			if(global_hide_region_boundary)
-			{
-				cursor_type = cursor_insert;
-				mark_type = cursor_none;
-			}
+            
+            switch (vim_state.mode) {
+                case VimMode_Normal: {
+                    cursor_color_id = defcolor_vim_cursor_normal;
+                    cursor_type = cursor_normal;
+                } break;
+                
+                case VimMode_VisualInsert:
+                case VimMode_Insert: {
+                    cursor_color_id = defcolor_vim_cursor_insert;
+                    cursor_type = cursor_insert;
+                } break;
+                
+                case VimMode_Visual:
+                case VimMode_VisualLine:
+                case VimMode_VisualBlock: {
+                    cursor_color_id = defcolor_vim_cursor_visual;
+                    
+                    if(cursor_pos <= mark_pos)
+                    {
+                        cursor_type = cursor_open_range;
+                        mark_type = cursor_close_range;
+                    }
+                    else
+                    {
+                        cursor_type = cursor_close_range;
+                        mark_type = cursor_open_range;
+                    }
+                    
+                    /*if(global_hide_region_boundary)
+                    {
+                        cursor_type = cursor_insert;
+                        mark_type = cursor_none;
+                    } */
+                } break;
+            }
+            
+            ARGB_Color cursor_color = F4_ARGBFromID(active_color_table, cursor_color_id);
+            
+            ARGB_Color mark_color = cursor_color;
+            ARGB_Color inactive_cursor_color = F4_ARGBFromID(active_color_table, fleury_color_cursor_inactive, 0);
+            
+            if(!F4_ARGBIsValid(inactive_cursor_color))
+            {
+                inactive_cursor_color = cursor_color;
+            }
+            
+            if(is_active_view == 0)
+            {
+                cursor_color = inactive_cursor_color;
+                mark_color = inactive_cursor_color;
+            }
             
             Rect_f32 target_cursor = text_layout_character_on_screen(app, text_layout_id, cursor_pos);
             Rect_f32 target_mark = text_layout_character_on_screen(app, text_layout_id, mark_pos);
@@ -211,6 +240,12 @@ F4_Cursor_RenderEmacsStyle(Application_Links *app, View_ID view_id, b32 is_activ
                         f32 width = target_cursor.x1 - target_cursor.x0;
                         target_cursor.x0 = view_rect.x0;
                         target_cursor.x1 = target_cursor.x0 + width;
+                    }
+                    
+                    if (cursor_pos > visible_range.end) {
+                        f32 height = target_cursor.y1 - target_cursor.y0;
+                        target_cursor.y1 = view_rect.y1;
+                        target_cursor.y0 = target_cursor.y1 - height;
                     }
                     
                     DoTheCursorInterpolation(app, frame_info, &global_cursor_rect,
